@@ -20,7 +20,9 @@ See [docs/DOCKER.md](docs/DOCKER.md) for beginner-friendly setup and troubleshoo
 
 ## Add a Task
 
-With Docker Compose running, open <http://localhost:5173>, enter a task name, optional location and notes, and select **Add task**. Turn on **Date & time** to add a start/end date and time using the English calendar picker. Saved tasks show their schedule and location beside the form (below it on a phone), newest first. Dates and messages are displayed in English, and scheduled times use your local time zone.
+With Docker Compose running, open <http://localhost:5173>, enter a task name, optional location, estimated time, and notes, and select **Add task**. Estimates can use minutes or hours. Turn on **Date & time** to set an end date and time; adding a start time is optional. Dates and messages are displayed in English, and scheduled times use your local time zone.
+
+**Priority** shows pending tasks by earliest deadline, with overdue tasks first. **Calendar** lets you browse months and select a day to see its tasks. **All tasks** includes tasks without dates, newest first. Estimated time does not affect priority yet.
 
 You can also send a JSON request directly to the backend:
 
@@ -40,7 +42,7 @@ The API returns `201 Created` with the saved task. See [docs/API.md](docs/API.md
 
 ## Project Progress
 
-Read the [project overview](docs/overview.md) for our current progress and next-step ideas. Daily work is recorded in the [log folder](docs/log/).
+Read the [project overview](docs/overview.md) for our current progress and the [to-do list](docs/TODO.md) for future work, including the recommendation system awaiting teammate design. Daily work is recorded in the [log folder](docs/log/).
 
 ## Project Structure
 

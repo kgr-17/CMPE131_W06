@@ -52,8 +52,14 @@ export function createApp({ taskStore }) {
     if ((startsAt !== null && !isUtcTimestamp(startsAt)) || (endsAt !== null && !isUtcTimestamp(endsAt))) {
       return response.status(400).json({ error: 'Start and end times must be valid UTC timestamps, for example 2026-09-10T02:00:00.000Z' })
     }
-    if (endsAt !== null && (startsAt === null || new Date(endsAt) <= new Date(startsAt))) {
+    if (endsAt !== null && startsAt !== null && new Date(endsAt) <= new Date(startsAt)) {
       return response.status(400).json({ error: 'End time must be after the start time' })
+    }
+
+    const estimatedMinutes = body.estimatedMinutes ?? null
+    if (estimatedMinutes !== null &&
+        (!Number.isInteger(estimatedMinutes) || estimatedMinutes < 1 || estimatedMinutes > 10080)) {
+      return response.status(400).json({ error: 'Estimated time must be a whole number from 1 to 10080 minutes' })
     }
 
     const task = await taskStore.create({
@@ -62,6 +68,7 @@ export function createApp({ taskStore }) {
       location: body.location?.trim() ?? '',
       startsAt,
       endsAt,
+      estimatedMinutes,
     })
     response.status(201).json(task)
   })

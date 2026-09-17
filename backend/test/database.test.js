@@ -22,12 +22,14 @@ test('creates tasks in PostgreSQL and preserves them after reconnecting and init
   await database.query(`CREATE SCHEMA ${schema}`)
   client = await database.connect()
   await client.query(`SET search_path TO ${schema}`)
-  // Start with the original table to verify upgrading preserves existing tasks.
+  // Start with the previous scheduling rule to verify the upgrade preserves tasks.
   await client.query(`CREATE TABLE tasks (
     id INTEGER GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
     title VARCHAR(200) NOT NULL, description VARCHAR(2000) NOT NULL DEFAULT '',
     status VARCHAR(20) NOT NULL DEFAULT 'pending',
-    created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP
+    created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    location VARCHAR(500) NOT NULL DEFAULT '', starts_at TIMESTAMPTZ,
+    ends_at TIMESTAMPTZ CHECK (ends_at IS NULL OR (starts_at IS NOT NULL AND ends_at > starts_at))
   )`)
   await client.query("INSERT INTO tasks (title) VALUES ('Existing task')")
   await initializeDatabase(client)
@@ -36,12 +38,13 @@ test('creates tasks in PostgreSQL and preserves them after reconnecting and init
   assert.equal(legacyResult.rows[0].location, '')
   assert.equal(legacyResult.rows[0].starts_at, null)
   assert.equal(legacyResult.rows[0].ends_at, null)
+  assert.equal(legacyResult.rows[0].estimated_minutes, null)
 
   const url = await startTestServer(t, createTaskStore(client))
   const title = "Read O'Reilly; DROP TABLE tasks; --"
   const response = await postTask(url, {
     title, description: '  Check persistence  ', location: '  Library  ',
-    startsAt: '2026-09-10T02:00:00.000Z', endsAt: '2026-09-10T03:00:00.000Z',
+    startsAt: '2026-09-10T02:00:00.000Z', endsAt: '2026-09-10T03:00:00.000Z', estimatedMinutes: 90,
   })
   assert.equal(response.status, 201)
   const task = await response.json()
@@ -51,6 +54,7 @@ test('creates tasks in PostgreSQL and preserves them after reconnecting and init
   assert.equal(task.location, 'Library')
   assert.equal(task.startsAt, '2026-09-10T02:00:00.000Z')
   assert.equal(task.endsAt, '2026-09-10T03:00:00.000Z')
+  assert.equal(task.estimatedMinutes, 90)
   assert.equal(task.status, 'pending')
   assert.ok(Number.isFinite(Date.parse(task.createdAt)))
 
@@ -68,22 +72,27 @@ test('creates tasks in PostgreSQL and preserves them after reconnecting and init
   assert.equal(stored.rows[0].location, task.location)
   assert.equal(stored.rows[0].starts_at.toISOString(), task.startsAt)
   assert.equal(stored.rows[0].ends_at.toISOString(), task.endsAt)
+  assert.equal(stored.rows[0].estimated_minutes, 90)
 
   const restartedUrl = await startTestServer(t, createTaskStore(client))
-  const secondResponse = await postTask(restartedUrl, { title: 'Another task' })
+  const secondResponse = await postTask(restartedUrl, {
+    title: 'Deadline without a start', endsAt: '2026-09-20T20:00:00.000Z', estimatedMinutes: 30,
+  })
   assert.equal(secondResponse.status, 201)
   const second = await secondResponse.json()
   assert.notEqual(second.id, task.id)
   assert.equal(second.description, '')
   assert.equal(second.status, 'pending')
   assert.equal(second.startsAt, null)
-  assert.equal(second.endsAt, null)
+  assert.equal(second.endsAt, '2026-09-20T20:00:00.000Z')
+  assert.equal(second.estimatedMinutes, 30)
   assert.equal(second.location, '')
 
   const invalid = await postTask(restartedUrl, { title: ' ' })
   assert.equal(invalid.status, 400)
   const count = await client.query('SELECT count(*)::integer AS count FROM tasks')
   assert.equal(count.rows[0].count, 3)
+  await initializeDatabase(client)
 
   const listResponse = await fetch(`${restartedUrl}/api/tasks`)
   assert.equal(listResponse.status, 200)
@@ -91,4 +100,8 @@ test('creates tasks in PostgreSQL and preserves them after reconnecting and init
   assert.deepEqual(listedTasks.slice(0, 2), [second, task])
   assert.equal(listedTasks[2].title, 'Existing task')
   assert.equal(listedTasks[2].startsAt, null)
+  assert.equal(listedTasks[2].estimatedMinutes, null)
+
+  await assert.rejects(client.query("INSERT INTO tasks (title, estimated_minutes) VALUES ('Invalid', 0)"), { code: '23514' })
+  await assert.rejects(client.query("INSERT INTO tasks (title, starts_at, ends_at) VALUES ('Invalid', '2026-09-20T20:00:00Z', '2026-09-20T19:00:00Z')"), { code: '23514' })
 })

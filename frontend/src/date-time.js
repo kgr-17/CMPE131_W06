@@ -28,6 +28,11 @@ export function toUtcTimestamp(dateValue, timeValue) {
 }
 
 export function formatSchedule(startsAt, endsAt) {
+  if (!startsAt && !endsAt) return ''
+  if (!startsAt) {
+    const end = new Date(endsAt)
+    return `Due ${englishDate.format(end)} at ${englishTime.format(end)}`
+  }
   const start = new Date(startsAt)
   const startLabel = `${englishDate.format(start)} at ${englishTime.format(start)}`
   if (!endsAt) return startLabel

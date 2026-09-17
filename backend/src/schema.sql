@@ -9,5 +9,14 @@ CREATE TABLE IF NOT EXISTS tasks (
 -- Add scheduling fields to existing databases without replacing saved tasks.
 ALTER TABLE tasks ADD COLUMN IF NOT EXISTS location VARCHAR(500) NOT NULL DEFAULT '';
 ALTER TABLE tasks ADD COLUMN IF NOT EXISTS starts_at TIMESTAMPTZ;
-ALTER TABLE tasks ADD COLUMN IF NOT EXISTS ends_at TIMESTAMPTZ
-  CHECK (ends_at IS NULL OR (starts_at IS NOT NULL AND ends_at > starts_at));
+ALTER TABLE tasks ADD COLUMN IF NOT EXISTS ends_at TIMESTAMPTZ;
+
+-- Replace the earlier rule so a deadline can be saved without a start time.
+ALTER TABLE tasks
+  DROP CONSTRAINT IF EXISTS tasks_check,
+  DROP CONSTRAINT IF EXISTS tasks_ends_at_check,
+  ADD CONSTRAINT tasks_ends_at_check
+    CHECK (ends_at IS NULL OR starts_at IS NULL OR ends_at > starts_at);
+
+ALTER TABLE tasks ADD COLUMN IF NOT EXISTS estimated_minutes INTEGER
+  CHECK (estimated_minutes BETWEEN 1 AND 10080);

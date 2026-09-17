@@ -33,7 +33,7 @@ test('creates a task, trims input, and ignores client-supplied metadata', async 
     status: 'pending', createdAt: '2026-09-09T12:00:00.000Z',
   }
   const create = t.mock.fn(async (input) => {
-    assert.deepEqual(input, { title: 'Finish homework', description: 'Chapter 3', location: '', startsAt: null, endsAt: null })
+    assert.deepEqual(input, { title: 'Finish homework', description: 'Chapter 3', location: '', startsAt: null, endsAt: null, estimatedMinutes: null })
     return savedTask
   })
   const url = await startTestServer(t, { create })
@@ -50,7 +50,7 @@ test('accepts a title alone and defaults the description to an empty string', as
   const url = await startTestServer(t, { create: async (input) => input })
   const response = await postTask(url, { title: 'Buy milk' })
   assert.equal(response.status, 201)
-  assert.deepEqual(await response.json(), { title: 'Buy milk', description: '', location: '', startsAt: null, endsAt: null })
+  assert.deepEqual(await response.json(), { title: 'Buy milk', description: '', location: '', startsAt: null, endsAt: null, estimatedMinutes: null })
 })
 
 test('accepts title and description at their maximum lengths', async (t) => {
@@ -60,6 +60,12 @@ test('accepts title and description at their maximum lengths', async (t) => {
 })
 
 const invalidBodies = [
+  ['zero estimated time', { title: 'Task', estimatedMinutes: 0 }],
+  ['negative estimated time', { title: 'Task', estimatedMinutes: -5 }],
+  ['fractional estimated time', { title: 'Task', estimatedMinutes: 1.5 }],
+  ['string estimated time', { title: 'Task', estimatedMinutes: '30' }],
+  ['boolean estimated time', { title: 'Task', estimatedMinutes: true }],
+  ['excessive estimated time', { title: 'Task', estimatedMinutes: 10081 }],
   ['numeric location', { title: 'Task', location: 42 }],
   ['null location', { title: 'Task', location: null }],
   ['long location', { title: 'Task', location: 'a'.repeat(501) }],
@@ -68,7 +74,6 @@ const invalidBodies = [
   ['time without UTC zone', { title: 'Task', startsAt: '2026-09-09T09:00:00' }],
   ['numeric start time', { title: 'Task', startsAt: 42 }],
   ['invalid end time', { title: 'Task', endsAt: 'tomorrow' }],
-  ['end without a start', { title: 'Task', endsAt: '2026-09-09T10:00:00Z' }],
   ['end before start', { title: 'Task', startsAt: '2026-09-09T10:00:00Z', endsAt: '2026-09-09T09:00:00Z' }],
   ['equal start and end', { title: 'Task', startsAt: '2026-09-09T10:00:00Z', endsAt: '2026-09-09T10:00:00Z' }],
   ['missing title', {}],
@@ -94,7 +99,7 @@ test('accepts a schedule and trims a location', async (t) => {
   assert.equal(response.status, 201)
   assert.deepEqual(await response.json(), {
     title: 'Study group', description: '', location: 'Library, room 2',
-    startsAt: '2026-09-10T02:00:00.000Z', endsAt: '2026-09-10T03:00:00.000Z',
+    startsAt: '2026-09-10T02:00:00.000Z', endsAt: '2026-09-10T03:00:00.000Z', estimatedMinutes: null,
   })
 })
 
@@ -168,4 +173,27 @@ test('preserves the health endpoint and JSON 404 responses', async (t) => {
   const missing = await fetch(`${url}/missing`)
   assert.equal(missing.status, 404)
   assert.deepEqual(await missing.json(), { error: 'Not found' })
+})
+
+
+test('accepts a deadline without a start and saves the estimated time', async (t) => {
+  const url = await startTestServer(t, { create: async (input) => input })
+  const response = await postTask(url, { title: 'Assignment', endsAt: '2026-09-20T20:00:00Z', estimatedMinutes: 90 })
+  assert.equal(response.status, 201)
+  const task = await response.json()
+  assert.equal(task.startsAt, null)
+  assert.equal(task.endsAt, '2026-09-20T20:00:00Z')
+  assert.equal(task.estimatedMinutes, 90)
+})
+
+test('allows the full estimated time range and explicit null without any dates', async (t) => {
+  const url = await startTestServer(t, { create: async (input) => input })
+  for (const estimatedMinutes of [1, 10080, null]) {
+    const response = await postTask(url, { title: 'Task', estimatedMinutes })
+    assert.equal(response.status, 201)
+    const task = await response.json()
+    assert.equal(task.estimatedMinutes, estimatedMinutes)
+    assert.equal(task.startsAt, null)
+    assert.equal(task.endsAt, null)
+  }
 })
